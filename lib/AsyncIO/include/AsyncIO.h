@@ -126,6 +126,8 @@ aIO_handle_t aIOOpenMessageQueue(char *name, long max_msg_num,
  */
 aIO_handle_t aIOOpenUDPSocket(char *s_addr, in_port_t port, size_t buffer_size,
                               aIO_callback_t callback, void *args);
+aIO_handle_t aIOOpenUDPSocket2(char *s_addr, in_port_t port, size_t buffer_size,
+                              aIO_callback_t callback, void *args);
 
 /**
  * @brief Opens a socket enpoint

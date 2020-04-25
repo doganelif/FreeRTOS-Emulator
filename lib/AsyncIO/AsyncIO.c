@@ -569,6 +569,94 @@ error_IO:
 	return NULL;
 }
 
+aIO_handle_t aIOOpenUDPSocket2(char *s_addr, in_port_t port, size_t buffer_size,
+			      void (*callback)(size_t, char *, void *),
+			      void *args)
+{
+	aIO_t *conn = getLastConnection();
+
+	conn->next = createAsyncIO(SOCKET, buffer_size, callback, args);
+	if (conn->next == NULL) {
+		fprintf(stderr,
+			"Failed to allocate UDP IO on port %" PRIu16 "\n",
+			(uint16_t)port);
+		goto error_IO;
+	}
+
+	conn->next->attr.socket.type = UDP;
+
+	pthread_mutex_lock(&conn->next->lock);
+
+	aIO_socket_t *s_udp = &conn->next->attr.socket;
+
+	s_udp->addr.sin_family = AF_INET;
+	s_udp->addr.sin_addr.s_addr =
+		(s_addr != NULL) ? inet_addr(s_addr) : INADDR_ANY;
+	s_udp->addr.sin_port = htons(port);
+
+	s_udp->fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (s_udp->fd < 0) {
+		fprintf(stderr,
+			"Failed to open UDP socket on port %" PRIu16 "\n",
+			(uint16_t)port);
+		goto error_socket;
+	}
+
+	printf("Opened socket on port %" PRIu16 " with FD: %d\n", port,
+	       s_udp->fd);
+
+	struct sigaction act = { 0 };
+	int fs;
+
+	act.sa_flags = SA_SIGINFO | SA_RESTART;
+	act.sa_sigaction = aIOSocketSigHandler;
+	sigfillset(&act.sa_mask);
+	sigdelset(&act.sa_mask, SIGIO);
+	if (sigaction(SIGIO, &act, NULL) < 0) {
+		fprintf(stderr,
+			"Setting sigaction for UDP socket on port %" PRIu16
+			" failed\n",
+			(uint16_t)port);
+		goto error_fcntl;
+	}
+
+	if ((fs = fcntl(s_udp->fd, F_GETFL)) == 0) {
+		fprintf(stderr, "Failed getting fd status\n");
+		goto error_fcntl;
+	}
+	fs |= O_ASYNC | O_NONBLOCK;
+	if (-1 == fcntl(s_udp->fd, F_SETFL, fs)) {
+		fprintf(stderr, "Failed to set fd status\n");
+		goto error_fcntl;
+	}
+	fcntl(s_udp->fd, F_SETSIG, SIGIO);
+	if (-1 == fcntl(s_udp->fd, F_SETOWN, getpid())) {
+		fprintf(stderr, "Failed to set thread owner\n");
+		goto error_fcntl;
+	}
+
+	//if (bind(s_udp->fd, (struct sockaddr *)&s_udp->addr,
+	//	 sizeof(s_udp->addr)) < 0) {
+	//	fprintf(stderr, "Failed to bind UDP socket %" PRIu16 "\n",
+	//		(uint16_t)port);
+	//	PRINT_CHECK;
+	//	goto error_fcntl;
+	//}
+
+	pthread_mutex_unlock(&conn->next->lock);
+
+	return (aIO_handle_t)conn->next;
+
+error_fcntl:
+	close(s_udp->fd);
+error_socket:
+	free(conn->next);
+	conn->next = NULL;
+	pthread_mutex_unlock(&conn->next->lock);
+error_IO:
+	return NULL;
+}
+
 void *aIOTCPHandler(void *conn)
 {
 	ssize_t read_size;

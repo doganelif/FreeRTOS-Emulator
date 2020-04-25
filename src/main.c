@@ -103,19 +103,31 @@ static buttons_buffer_t buttons = { 0 };
 
 aIO_handle_t udp_soc_receive = NULL, udp_soc_transmit = NULL;
 
+long ball_y = 0;
+long paddle_y = 0;
+enum {INC, DEC, NONE};
+char next_key = NONE;
+
 void UDPHandler(size_t read_size, char *buffer, void *args)
 {
-    printf("UDP Recv in handler: %s\n", buffer);
-}
-
-void UDPHandler2(size_t read_size, char *buffer, void *args)
-{
-    printf("UDP Recv in handler2: %s\n", buffer);
+    //printf("UDP Recv in handler: %s\n", buffer);
+    if (strcmp(buffer,"INC") == 0) {
+        //printf("INC\n");
+        next_key = INC;
+    } else if (strcmp(buffer,"DEC") == 0) {
+        //printf("DEC\n");
+        next_key = DEC;
+    } else if (strcmp(buffer,"NONE") == 0) {
+        //printf("NONE\n");
+        next_key = NONE;
+    }
 }
 
 void vUDPControlTask(void *pvParameters)
 {
-    static char *test_str_1 = "UDP test 1";
+    static char *cmd_pause = "PAUSE";
+    static char *cmd_resume = "RESUME";
+    static char buf[50];
     char *addr = NULL; // Loopback
     in_port_t port = UDP_RECEIVE_PORT;
 
@@ -126,15 +138,25 @@ void vUDPControlTask(void *pvParameters)
 
     port = UDP_TRANSMIT_PORT;
 
-    udp_soc_transmit = aIOOpenUDPSocket(addr, port, UDP_BUFFER_SIZE,
-                                   UDPHandler2, NULL);
+    udp_soc_transmit = aIOOpenUDPSocket2(addr, port, UDP_BUFFER_SIZE,
+                                   NULL, NULL);
 
-    printf("UDP socket 2 opened on port %d\n", port);
+   printf("UDP socket 2 opened on port %d\n", port);
 
     while (1) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
-        aIOSocketPut(UDP, NULL, UDP_TRANSMIT_PORT, test_str_1,
-                     strlen(test_str_1));
+        vTaskDelay(pdMS_TO_TICKS(15));
+        //aIOSocketPut(UDP, NULL, UDP_TRANSMIT_PORT, cmd_pause,
+        //             strlen(cmd_pause));
+        //printf("\nBALLy=%ld;PADDLEy=%ld\n",ball_y,paddle_y);
+        long diff = ball_y-paddle_y;
+        if (diff > 0) {
+            sprintf(buf,"+%ld",diff);
+        } else {
+            sprintf(buf,"-%ld",-diff);
+        }
+        aIOSocketPut(UDP, NULL, UDP_TRANSMIT_PORT, buf,
+                     strlen(buf));
+        //printf("DIFF=%ld",ball_y-paddle_y);
     }
 }
 
@@ -281,18 +303,10 @@ void vIncrementPaddleY(unsigned short *paddle)
         if (*paddle != 0) {
             (*paddle)--;
         }
-    if (paddle)
-        if (*paddle != 0) {
-            (*paddle)--;
-        }
 }
 
 void vDecrementPaddleY(unsigned short *paddle)
 {
-    if (paddle)
-        if (*paddle != PADDLE_INCREMENT_COUNT) {
-            (*paddle)++;
-        }
     if (paddle)
         if (*paddle != PADDLE_INCREMENT_COUNT) {
             (*paddle)++;
@@ -321,7 +335,7 @@ unsigned char xCheckPongRightInput(unsigned short *right_paddle_y)
 
 unsigned char xCheckPongLeftInput(unsigned short *left_paddle_y)
 {
-    xGetButtonInput(); // Update global button data
+/*    xGetButtonInput(); // Update global button data
 
     if (xSemaphoreTake(buttons.lock, portMAX_DELAY) == pdTRUE) {
         if (buttons.buttons[KEYCODE(W)]) {
@@ -335,7 +349,14 @@ unsigned char xCheckPongLeftInput(unsigned short *left_paddle_y)
             return 1;
         }
     }
-    xSemaphoreGive(buttons.lock);
+    xSemaphoreGive(buttons.lock);*/
+    if (next_key == DEC) {
+        vIncrementPaddleY(left_paddle_y);
+    } else if (next_key == INC) {
+        vDecrementPaddleY(left_paddle_y);
+    } else {
+
+    }
     return 0;
 }
 
@@ -460,7 +481,7 @@ typedef struct player_data {
 
 void vResetPaddle(wall_t *wall)
 {
-    setWallProperty(wall, 0, PADDLE_INCREMENT_COUNT / 2, 0, 0, SET_WALL_Y);
+    setWallProperty(wall, 0, PADDLE_INCREMENT_SIZE / 2, 0, 0, SET_WALL_Y);
 }
 
 void vRightWallCallback(void *player_data)
@@ -549,6 +570,7 @@ void vLeftPaddleTask(void *pvParameters)
 
         // Get input
         xCheckPongLeftInput(&left_player.paddle_position);
+        paddle_y = left_player.paddle_position * PADDLE_INCREMENT_SIZE + PADDLE_LENGTH/2 + WALL_OFFSET + WALL_THICKNESS,
 
         vDrawWall(left_wall);
         vDrawPaddle(left_player.paddle, left_player.paddle_position);
@@ -656,6 +678,7 @@ void vPongControlTask(void *pvParameters)
                         }
                     }
                 }
+                ball_y = my_ball->y;
 
                 if (xTaskNotifyGive(LeftPaddleTask) != pdPASS) {
                     fprintf(stderr, "[ERROR] Task Notification to LeftPaddleTask failed\n");
