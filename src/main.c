@@ -133,8 +133,8 @@ void vUDPControlTask(void *pvParameters)
 
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(1000));
-        aIOSocketPut(UDP, NULL, UDP_TEST_PORT_2, test_str_2,
-                     strlen(test_str_2));
+        aIOSocketPut(UDP, NULL, UDP_TRANSMIT_PORT, test_str_1,
+                     strlen(test_str_1));
     }
 }
 
