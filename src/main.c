@@ -59,6 +59,11 @@
 #define START_LEFT 1
 #define START_RIGHT 2
 
+/** AsyncIO related */
+#define UDP_BUFFER_SIZE 1024
+#define UDP_RECEIVE_PORT 1234
+#define UDP_TRANSMIT_PORT 1235
+
 #ifdef TRACE_FUNCTIONS
 #include "tracer.h"
 #endif
@@ -76,6 +81,7 @@ static TaskHandle_t LeftPaddleTask = NULL;
 static TaskHandle_t RightPaddleTask = NULL;
 static TaskHandle_t PongControlTask = NULL;
 static TaskHandle_t PausedStateTask = NULL;
+static TaskHandle_t UDPControlTask = NULL;
 
 static QueueHandle_t LeftScoreQueue = NULL;
 static QueueHandle_t RightScoreQueue = NULL;
@@ -94,6 +100,43 @@ typedef struct buttons_buffer {
 } buttons_buffer_t;
 
 static buttons_buffer_t buttons = { 0 };
+
+aIO_handle_t udp_soc_receive = NULL, udp_soc_transmit = NULL;
+
+void UDPHandler(size_t read_size, char *buffer, void *args)
+{
+    printf("UDP Recv in handler: %s\n", buffer);
+}
+
+void UDPHandler2(size_t read_size, char *buffer, void *args)
+{
+    printf("UDP Recv in handler2: %s\n", buffer);
+}
+
+void vUDPControlTask(void *pvParameters)
+{
+    static char *test_str_1 = "UDP test 1";
+    char *addr = NULL; // Loopback
+    in_port_t port = UDP_RECEIVE_PORT;
+
+    udp_soc_receive = aIOOpenUDPSocket(addr, port, UDP_BUFFER_SIZE,
+                                   UDPHandler, NULL);
+
+    printf("UDP socket opened on port %d\n", port);
+
+    port = UDP_TRANSMIT_PORT;
+
+    udp_soc_transmit = aIOOpenUDPSocket(addr, port, UDP_BUFFER_SIZE,
+                                   UDPHandler2, NULL);
+
+    printf("UDP socket 2 opened on port %d\n", port);
+
+    while (1) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        aIOSocketPut(UDP, NULL, UDP_TEST_PORT_2, test_str_2,
+                     strlen(test_str_2));
+    }
+}
 
 void checkDraw(unsigned char status, const char *msg)
 {
@@ -799,6 +842,12 @@ int main(int argc, char *argv[])
         PRINT_TASK_ERROR("PongControlTask");
         goto err_pongcontrol;
     }
+    if (xTaskCreate(vUDPControlTask, "UDPControlTask",
+                    mainGENERIC_STACK_SIZE, NULL,
+                    mainGENERIC_PRIORITY, &UDPControlTask) != pdPASS) {
+        PRINT_TASK_ERROR("UDPControlTask");
+        goto err_udpcontrol;
+    }
 
     vTaskSuspend(LeftPaddleTask);
     vTaskSuspend(RightPaddleTask);
@@ -809,6 +858,8 @@ int main(int argc, char *argv[])
 
     return EXIT_SUCCESS;
 
+err_pongcontrol:
+    vTaskDelete(PongControlTask);
 err_pongcontrol:
     vTaskDelete(PausedStateTask);
 err_pausedstate:
