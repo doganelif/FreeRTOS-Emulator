@@ -858,7 +858,7 @@ int main(int argc, char *argv[])
 
     return EXIT_SUCCESS;
 
-err_pongcontrol:
+err_udpcontrol:
     vTaskDelete(PongControlTask);
 err_pongcontrol:
     vTaskDelete(PausedStateTask);
