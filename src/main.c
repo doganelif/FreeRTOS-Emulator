@@ -46,7 +46,7 @@ void vDemoTask(void *pvParameters)
     // structure to store time retrieved from Linux kernel
     static struct timespec the_time;
     static char our_time_string[100];
-    static int our_time_strings_width;
+    static int our_time_strings_width = 0;
 
     // Needed such that Gfx library knows which thread controlls drawing
     // Only one thread can call vDrawUpdateScreen while and thread can call
@@ -63,11 +63,12 @@ void vDemoTask(void *pvParameters)
         // resource and given back when you're finished. If the mutex is not
         // given back then no other task can access the reseource.
         if (xSemaphoreTake(buttons.lock, 0) == pdTRUE) {
-            if (buttons.buttons[KEYCODE(Q)]) {
+            if (buttons.buttons[KEYCODE(
+                                    Q)]) { // Equiv to SDL_SCANCODE_Q
                 exit(EXIT_SUCCESS);
             }
+            xSemaphoreGive(buttons.lock);
         }
-        xSemaphoreGive(buttons.lock);
 
         tumDrawClear(White); // Clear screen
 
@@ -80,9 +81,9 @@ void vDemoTask(void *pvParameters)
                 (long int)the_time.tv_sec);
 
         // Get the width of the string on the screen so we can center it
-        if (!tumGetTextSize(
-                (char *)our_time_string, &our_time_strings_width,
-                NULL)) // Returns 0 if width was successfully obtained
+        // Returns 0 if width was successfully obtained
+        if (!tumGetTextSize((char *)our_time_string,
+                            &our_time_strings_width, NULL))
             tumDrawText(our_time_string,
                         SCREEN_WIDTH / 2 -
                         our_time_strings_width / 2,
@@ -91,8 +92,8 @@ void vDemoTask(void *pvParameters)
 
         vDrawUpdateScreen(); // Refresh the screen to draw string
 
-        vTaskDelay(
-            (TickType_t)1000); // Basic sleep of 1000 milliseconds
+        // Basic sleep of 1000 milliseconds
+        vTaskDelay((TickType_t)1000);
     }
 }
 
@@ -116,8 +117,6 @@ int main(int argc, char *argv[])
         PRINT_ERROR("Failed to initialize audio");
         goto err_init_audio;
     }
-
-    atexit(aIODeinit);
 
     buttons.lock = xSemaphoreCreateMutex(); // Locking mechanism
     if (!buttons.lock) {
